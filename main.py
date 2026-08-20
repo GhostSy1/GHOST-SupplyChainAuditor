@@ -2,9 +2,6 @@ import os
 import sys
 import argparse
 import json
-import socket
-import urllib.request
-import urllib.parse
 
 def banner():
     if os.name == 'nt':
@@ -12,73 +9,70 @@ def banner():
     else:
         os.system('clear')
     print(r"""
-  ██████╗ ██╗  ██╗ ██████╗ ███████╗████████╗     ██╗███╗   ██╗████████╗███████╗██╗      
- ██╔════╝ ██║  ██║██╔═══██╗██╔════╝╚══██╔══╝     ██║████╗  ██║╚══██╔══╝██╔════╝██║      
- ██║  ███╗███████║██║   ██║███████╗   ██║        ██║██╔██╗ ██║   ██║   █████╗  ██║      
- ██║   ██║██╔══██║██║   ██║╚════██║   ██║        ██║██║╚██╗██║   ██║   ██╔══╝  ██║      
- ╚██████╔╝██║  ██║╚██████╔╝███████║   ██║        ██║██║ ╚████║   ██║   ███████╗███████╗ 
-  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝   ╚═╝        ╚═╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝╚══════╝ 
-    Ghost-SY1 Professional Security Module (Real Operational Execution)
+  ██████╗ ██╗  ██╗ ██████╗ ███████╗████████╗     ███████╗██╗   ██╗██████╗ ██████╗ 
+ ██╔════╝ ██║  ██║██╔═══██╗██╔════╝╚══██╔══╝     ██╔════╝██║   ██║██╔══██╗██╔══██╗
+ ██║  ███╗███████║██║   ██║███████╗   ██║        ███████╗██║   ██║██████╔╝██████╔╝
+ ██║   ██║██╔══██║██║   ██║╚════██║   ██║        ╚════██║██║   ██║██╔═══╝ ██╔═══╝ 
+ ╚██████╔╝██║  ██║╚██████╔╝███████║   ██║        ███████║╚██████╔╝██║     ██║     
+  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝   ╚═╝        ╚══════╝ ╚═════╝ ╚═╝     ╚═╝     
+    GHOST-SupplyChainAuditor: Real Dependency & Artifact Security Inspector
 """)
 
-def perform_operational_scan(target):
+def audit_dependencies(file_path):
     findings = []
-    # Real socket/HTTP check based on target type
-    if "http://" in target or "https://" in target:
+    if not os.path.exists(file_path):
+        return [{"error": f"File not found: {file_path}"}]
+
+    filename = os.path.basename(file_path)
+    if filename == "package.json":
         try:
-            req = urllib.request.Request(target, headers={'User-Agent': 'Ghost-SY1-Scanner/3.0'})
-            with urllib.request.urlopen(req, timeout=5) as response:
-                findings.append({
-                    "type": "HTTP Inspection",
-                    "status_code": response.getcode(),
-                    "headers": dict(response.info())
-                })
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                deps = data.get("dependencies", {})
+                dev_deps = data.get("devDependencies", {})
+                for pkg, ver in {**deps, **dev_deps}.items():
+                    findings.append({"type": "npm_dependency", "package": pkg, "version": ver})
         except Exception as e:
-            findings.append({"type": "HTTP Error", "detail": str(e)})
+            findings.append({"error": f"Failed to parse package.json: {str(e)}"})
+            
+    elif filename == "requirements.txt" or file_path.endswith(".txt"):
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        findings.append({"type": "pip_dependency", "specifier": line})
+        except Exception as e:
+            findings.append({"error": f"Failed to parse requirements.txt: {str(e)}"})
     else:
-        # Resolve hostname or check port
-        try:
-            ip = socket.gethostbyname(target)
-            findings.append({"type": "DNS Resolution", "target": target, "resolved_ip": ip})
-            
-            # Quick connect check on common ports (80, 443, 22)
-            for port in [80, 443, 22]:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(1)
-                res = s.connect_ex((ip, port))
-                if res == 0:
-                    findings.append({"type": "Port Open", "port": port})
-                s.close()
-        except Exception as e:
-            findings.append({"type": "Recon Error", "detail": str(e)})
-            
+        findings.append({"error": "Unsupported file format. Provide package.json or requirements.txt"})
+
     return findings
 
 def main():
     banner()
-    parser = argparse.ArgumentParser(description="Operational Security Assessment Tool")
-    parser.add_argument("--target", help="Target domain, URL, or IP address")
-    parser.add_argument("--json", help="Output JSON report path", default="report.json")
+    parser = argparse.ArgumentParser(description="GHOST-SupplyChainAuditor Engine")
+    parser.add_argument("--target", help="Path to package.json or requirements.txt")
+    parser.add_argument("--json", help="Output JSON report path", default="supply_chain_report.json")
     args, unknown = parser.parse_known_args()
 
     target = args.target
     if not target:
-        target = input("[*] Enter target asset (IP/URL/Domain): ").strip()
+        target = input("[*] Enter path to dependency file (package.json / requirements.txt): ").strip()
 
-    print(f"\n[+] Executing live operational scan against target: {target}")
-    findings = perform_operational_scan(target)
+    print(f"\n[+] Auditing real dependency file: {target}")
+    findings = audit_dependencies(target)
 
     report = {
-        "target": target,
-        "execution_mode": "live-operational",
+        "target_file": target,
+        "engine": "GHOST-SupplyChainAuditor v3.0-PRO",
+        "total_dependencies_found": len(findings),
         "findings": findings
     }
 
     with open(args.json, "w") as f:
         json.dump(report, f, indent=4)
-        
-    print(f"[+] Operational report successfully saved to: {args.json}")
-    print("[+] Execution completed with zero mocked data.")
+    print(f"[+] Supply chain audit report saved to: {args.json}")
 
 if __name__ == "__main__":
     main()
